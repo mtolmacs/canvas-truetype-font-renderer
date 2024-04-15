@@ -32,7 +32,7 @@ export const loadFont = (() => {
     } else if (status === 'rejected') {
       throw result
     } else if (status === 'fulfilled') {
-      return result[0]
+      return result[0].data
     }
   }
 })()
