@@ -12,32 +12,12 @@ db.version(1).stores({
   fonts: '++id, name, data' // Primary key and indexed props
 })
 
-export const loadFont = (() => {
-  let status = 'pending'
-  let result: any
+export function loadFont(): Promise<ArrayBuffer | undefined> {
   // @ts-ignore
-  let fetching = db.fonts.toArray()
-    .then((res: any) => {
-      status = 'fulfilled'
-      result = res
-    })
-    .catch((error: any) => {
-      status = 'rejected'
-      result = error
-    })
+  return db.fonts.toArray().then(res => res[0]?.data)
+}
 
-  return () => {
-    if (status === 'pending') {
-      throw fetching
-    } else if (status === 'rejected') {
-      throw result
-    } else if (status === 'fulfilled') {
-      return result[0].data
-    }
-  }
-})()
-
-export const storeFont = (buf: ArrayBuffer) => {
+export function storeFont(buf: ArrayBuffer) {
   // @ts-ignore
-  db.fonts.add({ id: 1, name: 'default', data: buf })
+  return db.fonts.add({ id: 1, name: 'default', data: buf })
 }

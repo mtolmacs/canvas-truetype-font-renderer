@@ -110,6 +110,6 @@ export default class Font {
         }
       }
     }
-    //console.log(flags)
+    console.log(flags)
   }
 }
