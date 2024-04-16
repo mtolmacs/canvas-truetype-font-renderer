@@ -1,14 +1,20 @@
+import { storeFont } from "./db"
+import Font from "./font"
+
 export default function UploadFont({
-  fontCallback
+  setFont
 }: {
-  fontCallback: (buf: ArrayBuffer) => void
+  setFont: (font: Font) => void
 }) {
   function fontChanged(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files![0]
     const reader = new FileReader()
 
     reader.onload = (loaded) => {
-      fontCallback(loaded.target?.result as ArrayBuffer)
+      const buf = loaded.target?.result as ArrayBuffer
+
+      storeFont(loaded.target?.result as ArrayBuffer)
+      setFont(new Font(buf))
       event.target.value = ''
     }
 

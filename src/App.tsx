@@ -1,56 +1,53 @@
 import React, { Suspense } from "react"
-import { loadFont, storeFont } from "./db"
 import { ErrorBoundary } from "react-error-boundary"
 import Error from "./Error"
+import Font from "./font"
+import { loadFont } from "./db"
 import UploadFont from "./UploadFont"
 
-function getNumberOfTables(view: DataView) {
-  return view.getUint16(4) // Skip scaler table in header
-}
+function promiseToSuspense<T>(promise: Promise<T>): () => T | Error | undefined {
+  let status = 'pending'
+  let result: T | Error
 
-function getFontDirectory(buf: ArrayBuffer) {
-  const DIRECTORY_OFFSET = 12
-  const decoder = new TextDecoder()
-  const numTables = getNumberOfTables(new DataView(buf))
+  let loading = promise.then(res => {
+    status = 'fulfilled'
+    result = res
+  }).catch(error => {
+    status = 'rejected'
+    result = error
+  })
 
-  return [...Array(numTables).keys()]
-    // Offset step in directory
-    .map(num => DIRECTORY_OFFSET + num * 16)
-    // Create slice of directory item
-    .map(offset => buf.slice(offset, offset + 16))
-    // Read the data entries from the directory
-    .map(slice => {
-      const name = decoder.decode(slice.slice(0, 4))
-      const view = new DataView(slice)
-
-      return {
-        name,
-        checksum: view.getUint32(4),
-        offset: view.getUint32(8),
-        length: view.getUint32(12),
-      }
-    })
+  return () => {
+    if (status === 'pending') {
+      throw loading
+    } else if (status === 'rejected') {
+      throw result
+    } else if (status === 'fulfilled') {
+      return result
+    }
+  }
 }
 
 function Page() {
   const canvas = React.useRef<HTMLCanvasElement>(null)
-  const [font, setFont] = React.useState(loadFont())
-  const setFontCallback = React.useCallback((buf: ArrayBuffer) => {
-    storeFont(buf)
-    setFont(buf)
+  const [font, setFont] = React.useState<Font | Error | undefined>()
+
+  React.useEffect(() => {
+    const promise = loadFont().then(buf => buf && new Font(buf))
+    const suspense = promiseToSuspense(promise)
+    setFont(suspense)
   }, [])
 
   React.useEffect(() => {
-    if (canvas.current && font) {
-      const ctx = canvas.current.getContext("2d")
-
-      console.log(getFontDirectory(font))
+    if (canvas.current && font instanceof Font) {
+      // const ctx = canvas.current.getContext("2d")
+      font.getGlyphs()
     }
   }, [font])
 
   return (
     <>
-      <UploadFont fontCallback={setFontCallback} />
+      <UploadFont setFont={setFont} />
       <canvas ref={canvas}></canvas>
     </>
   )
