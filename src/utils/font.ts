@@ -42,6 +42,7 @@ export default class Font {
   readonly directory: FontDirectory
   readonly glyphs?: Glyph[]
   readonly numGlyphs: number
+  readonly locations: number[] = []
 
   constructor(private buffer: Readonly<ArrayBuffer>) {
     const reader = new Reader(buffer)
@@ -83,6 +84,12 @@ export default class Font {
       flags,
       unitsPerEm,
       indexToLocFormat,
+    }
+
+    for (let idx = 0; idx < this.numGlyphs; idx++) {
+      const gReader = new Reader(buffer, this.directory['loca'].offset + idx * (indexToLocFormat ? 2 : 4))
+      const offset = indexToLocFormat ? gReader.getUint16() * 2 : gReader.getUint32()
+      this.locations[idx] = this.directory['glyf'].offset + offset
     }
   }
 
