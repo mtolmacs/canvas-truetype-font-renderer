@@ -5,6 +5,23 @@ import Font from "./utils/font"
 import { loadFont } from "./utils/db"
 import UploadFont from "./UploadFont"
 
+const COLORS = [
+  'blue',
+  'blueviolet',
+  'brown',
+  'burlywood',
+  'cadetblue',
+  'chartreuse',
+  'chocolate',
+  'coral',
+  'cornflowerblue'
+]
+
+let colorIdx = 0
+function getNextColor(): string {
+  return COLORS[colorIdx++ % 9]
+}
+
 function promiseToSuspense<T>(promise: Promise<T>): () => T | Error | undefined {
   let status = 'pending'
   let result: T | Error
@@ -45,21 +62,67 @@ function Page() {
         throw new Error('2D context for canvas is not supported')
       }
 
+      const glyphs = font.getGlyphs()
+
       const SCALE = 0.5
       const POS = 30
       ctx.canvas.width = window.innerWidth
       ctx.canvas.height = window.innerWidth
 
-      const glyphs = font.getGlyphs()
-      ctx.clearRect(0, 0, 2000, 3000)
+      ctx.reset()
       ctx.strokeStyle = 'red'
+      ctx.fillStyle = '#444'
       glyphs.forEach(glyph => {
-        glyph?.coords.forEach(point => {
+        if (!glyph) {
+          return
+        }
+
+        // Fill bounding box background
+        // ctx.fillRect(
+        //   POS + glyph.min.x * SCALE,
+        //   POS + glyph.min.y * SCALE,
+        //   POS + glyph.max.x * SCALE,
+        //   POS + glyph.max.y * SCALE
+        // )
+
+        // Draw the coords
+        // glyph.coords.forEach(point => {
+        //   ctx.beginPath()
+        //   ctx.arc(
+        //     POS + point.x * SCALE,
+        //     POS + point.y * SCALE,
+        //     3,
+        //     0,
+        //     2 * Math.PI,
+        //     false
+        //   )
+        //   ctx.stroke()
+        // });
+
+        // Draw contours
+        let idx = 0
+        glyph.contourEndIndices.forEach(endIdx => {
+          ctx.strokeStyle = getNextColor()
           ctx.beginPath()
-          ctx.arc(POS + point.x * SCALE, POS + point.y * SCALE, 3, 0, 2 * Math.PI, false)
+          ctx.moveTo(
+            POS + glyph.coords[idx].x * SCALE,
+            POS + glyph.coords[idx].y * SCALE
+          )
+          for (let i = idx + 1; i <= endIdx; i++) {
+            ctx.lineTo(
+              POS + glyph.coords[i].x * SCALE,
+              POS + glyph.coords[i].y * SCALE,
+            )
+          }
+          ctx.lineTo(
+            POS + glyph.coords[idx].x * SCALE,
+            POS + glyph.coords[idx].y * SCALE,
+          )
+          idx = endIdx + 1
           ctx.stroke()
-        });
-      });
+
+        })
+      })
     }
   }, [font])
 
