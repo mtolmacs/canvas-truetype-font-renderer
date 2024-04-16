@@ -40,7 +40,7 @@ export default class Font {
   readonly header: FontHeader
   readonly descriptor: FontDescriptor
   readonly directory: FontDirectory
-  readonly glyphs?: Glyph[]
+  private glyphs?: (Glyph | undefined)[]
   readonly numGlyphs: number
   readonly locations: number[] = []
 
@@ -130,23 +130,23 @@ export default class Font {
   }
 
   getGlyphs(): (Glyph | undefined)[] {
-    if (this.glyphs) {
-      return this.glyphs
+    if (!this.glyphs) {
+      this.glyphs = this.locations.map(loc => {
+        const reader = new Reader(this.buffer, loc)
+        return Font.readGlyph(reader, this.descriptor.unitsPerEm)
+      })
     }
 
-    const offset = this.directory['glyf'].offset
-    const reader = new Reader(this.buffer, offset)
-
-    return [Font.readGlyph(reader)]
+    return this.glyphs
   }
 
-  private static readGlyph(reader: Reader): Glyph | undefined {
+  private static readGlyph(reader: Reader, unitsPerEm: number): Glyph | undefined {
     const numContours = reader.getInt16()
 
-    const xMin = reader.getInt16()
-    const yMin = reader.getInt16()
-    const xMax = reader.getInt16()
-    const yMax = reader.getInt16()
+    const xMin = reader.getInt16() / unitsPerEm
+    const yMin = reader.getInt16() / unitsPerEm
+    const xMax = reader.getInt16() / unitsPerEm
+    const yMax = reader.getInt16() / unitsPerEm
 
     if (numContours < 0) {
       console.error('Compound glyphs are not yet supported')
@@ -161,8 +161,8 @@ export default class Font {
     reader.skipSlice(instructionsLength)
 
     const flags = Font.readFlags(reader, contourEndIndices[contourEndIndices.length - 1] + 1)
-    const xCoords = Font.readCoordinates(reader, flags, 1, 4)
-    const yCoords = Font.readCoordinates(reader, flags, 2, 5)
+    const xCoords = Font.readCoordinates(reader, flags, 1, 4, unitsPerEm)
+    const yCoords = Font.readCoordinates(reader, flags, 2, 5, unitsPerEm)
     const coords = xCoords.map((x, idx) => ({ x, y: yCoords[idx] }))
 
     return {
@@ -173,7 +173,13 @@ export default class Font {
     }
   }
 
-  private static readCoordinates(reader: Reader, flags: number[], offsetSizeFlagBit: number, offsetSignOrSkipBit: number): number[] {
+  private static readCoordinates(
+    reader: Reader,
+    flags: number[],
+    offsetSizeFlagBit: number,
+    offsetSignOrSkipBit: number,
+    unitsPerEm: number,
+  ): number[] {
     const coordinates: number[] = []
     let coord = 0
     for (let i = 0; i < flags.length; i++) {
@@ -182,9 +188,9 @@ export default class Font {
       if (Font.flagBitIsSet(flag, offsetSizeFlagBit)) {
         const offset = reader.getUint8()
         const sign = Font.flagBitIsSet(flag, offsetSignOrSkipBit) ? 1 : -1
-        coord += (offset * sign)
+        coord += (offset * sign) / unitsPerEm
       } else if (!Font.flagBitIsSet(flag, offsetSignOrSkipBit)) {
-        coord += reader.getInt16()
+        coord += reader.getInt16() / unitsPerEm
       } else {
         // Skip and jump the index (it's the same as the previous)
       }

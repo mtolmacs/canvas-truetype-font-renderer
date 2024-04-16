@@ -1,7 +1,7 @@
 import React, { Suspense } from "react"
 import { ErrorBoundary } from "react-error-boundary"
 import ErrorPage from "./Error"
-import Font, { Glyph } from "./utils/font"
+import Font, { Glyph, Point } from "./utils/font"
 import { loadFont } from "./utils/db"
 import UploadFont from "./UploadFont"
 
@@ -46,28 +46,32 @@ function promiseToSuspense<T>(promise: Promise<T>): () => T | Error | undefined 
 }
 
 function scale(val: number): number {
-  const POS = 30
-  const SCALE = 0.25
+  const POS = 0
+  const SCALE = 128
   return POS + val * SCALE
 }
 
-function drawBoundingBox(ctx: CanvasRenderingContext2D, glyph: Glyph) {
-  ctx.fillStyle = '#444'
-  ctx.fillRect(
-    scale(glyph.min.x),
-    scale(glyph.min.y),
-    scale(glyph.max.x),
-    scale(glyph.max.y),
+function drawBoundingBox(ctx: CanvasRenderingContext2D, glyph: Glyph, base: Point) {
+  ctx.fillStyle = getNextColor()
+  ctx.strokeStyle = 'white'
+
+  ctx.beginPath()
+  ctx.rect(
+    scale(base.x + glyph.min.x),
+    scale(base.y), // Bounding box is off if glyph.min.y is added???
+    scale(glyph.max.x - glyph.min.x),
+    scale(glyph.max.y - glyph.min.y),
   )
+  ctx.stroke()
 }
 
-function drawPoints(ctx: CanvasRenderingContext2D, glyph: Glyph) {
+function drawPoints(ctx: CanvasRenderingContext2D, glyph: Glyph, base: Point) {
   ctx.strokeStyle = 'red'
   glyph.coords.forEach(point => {
     ctx.beginPath()
     ctx.arc(
-      scale(point.x),
-      scale(glyph.max.y - point.y), // X is at the bottom for TTF
+      scale(base.x + point.x),
+      scale(base.y + (glyph.max.y - point.y)), // X is at the bottom for TTF
       3,
       0,
       2 * Math.PI,
@@ -77,35 +81,73 @@ function drawPoints(ctx: CanvasRenderingContext2D, glyph: Glyph) {
   });
 }
 
-function drawContours(ctx: CanvasRenderingContext2D, glyph: Glyph) {
+function drawContours(ctx: CanvasRenderingContext2D, glyph: Glyph, base: Point) {
   let startIdx = 0
   glyph.contourEndIndices.forEach(endIdx => {
     ctx.strokeStyle = getNextColor()
     ctx.beginPath()
     ctx.moveTo(
-      scale(glyph.coords[startIdx].x),
-      scale(glyph.max.y - glyph.coords[startIdx].y),
+      scale(base.x + glyph.coords[startIdx].x),
+      scale(base.y + (glyph.max.y - glyph.coords[startIdx].y)),
     )
     for (let i = startIdx + 1; i <= endIdx; i++) {
       ctx.lineTo(
-        scale(glyph.coords[i].x),
-        scale(glyph.max.y - glyph.coords[i].y),
+        scale(base.x + glyph.coords[i].x),
+        scale(base.y + (glyph.max.y - glyph.coords[i].y)),
       )
     }
     ctx.lineTo(
-      scale(glyph.coords[startIdx].x),
-      scale(glyph.max.y - glyph.coords[startIdx].y),
+      scale(base.x + glyph.coords[startIdx].x),
+      scale(base.y + (glyph.max.y - glyph.coords[startIdx].y)),
     )
     startIdx = endIdx + 1
     ctx.stroke()
   })
 }
 
+function renderGlyphs(
+  ctx: CanvasRenderingContext2D,
+  glyphs: (Glyph | undefined)[],
+  shouldDrawPoints: boolean,
+  shouldDrawContours: boolean,
+  shouldDrawBoundingBoxes: boolean,
+) {
+  const lineHeightEm = 0.3
+  let posX = 0
+  let posY = 0.2
+
+  ctx.reset()
+  glyphs.forEach((glyph) => {
+    if (!glyph) {
+      // If the glyph cannot be rendered, replace it with the NOTDEF glyph
+      glyph = glyphs[0]!
+    }
+
+    if (shouldDrawBoundingBoxes) {
+      drawBoundingBox(ctx, glyph, { x: posX, y: posY })
+    }
+    if (shouldDrawPoints) {
+      drawPoints(ctx, glyph, { x: posX, y: posY })
+    }
+    if (shouldDrawContours) {
+      drawContours(ctx, glyph, { x: posX, y: posY })
+    }
+
+    posX += glyph.max.x // - glyph.min.x
+    if (scale(posX) > window.innerWidth) {
+      posX = 0
+      posY += (glyph.max.y - glyph.min.y) + lineHeightEm
+    }
+  })
+}
+
 function Page() {
   const canvas = React.useRef<HTMLCanvasElement>(null)
   const [font, setFont] = React.useState<Font | Error | undefined>()
-  const [shouldDrawPoints, setShouldDrawPoints] = React.useState(true)
+  const [shouldDrawBoundingBoxes, setShouldDrawBoundingBoxes] = React.useState(false)
+  const [shouldDrawPoints, setShouldDrawPoints] = React.useState(false)
   const [shouldDrawContours, setShouldDrawContours] = React.useState(true)
+  const [shouldRerender, setShouldRerender] = React.useState([window.innerWidth, window.innerHeight])
 
   React.useEffect(() => {
     const promise = loadFont().then(buf => buf && new Font(buf))
@@ -113,7 +155,15 @@ function Page() {
     setFont(suspense)
   }, [])
 
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
+    function rerender() {
+      setShouldRerender([window.innerWidth, window.innerHeight])
+    }
+    window.addEventListener('resize', rerender)
+    return () => window.removeEventListener('resize', rerender);
+  }, [])
+
+  React.useLayoutEffect(() => {
     if (canvas.current && font instanceof Font) {
       const ctx = canvas.current.getContext("2d")
       if (!ctx) {
@@ -125,22 +175,9 @@ function Page() {
       ctx.canvas.width = window.innerWidth
       ctx.canvas.height = window.innerWidth
 
-      ctx.reset()
-      glyphs.forEach(glyph => {
-        if (!glyph) {
-          return
-        }
-
-        drawBoundingBox(ctx, glyph)
-        if (shouldDrawPoints) {
-          drawPoints(ctx, glyph)
-        }
-        if (shouldDrawContours) {
-          drawContours(ctx, glyph)
-        }
-      })
+      renderGlyphs(ctx, glyphs, shouldDrawPoints, shouldDrawContours, shouldDrawBoundingBoxes)
     }
-  }, [font, shouldDrawContours, shouldDrawPoints])
+  }, [font, shouldDrawContours, shouldDrawPoints, shouldDrawBoundingBoxes, shouldRerender])
 
   return (
     <>
@@ -148,6 +185,7 @@ function Page() {
       <div style={{ margin: '10px' }}>
         <button onClick={() => setShouldDrawPoints(!shouldDrawPoints)}>Draw Points</button>
         <button onClick={() => setShouldDrawContours(!shouldDrawContours)}>Draw Contours</button>
+        <button onClick={() => setShouldDrawBoundingBoxes(!shouldDrawBoundingBoxes)}>Draw Bounding Boxes</button>
       </div>
       <canvas ref={canvas}></canvas>
     </>
