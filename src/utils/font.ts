@@ -1,6 +1,6 @@
 import Reader from "./reader"
 
-type FontHeader = {
+export type FontHeader = {
   scalerType: number,
   numTables: number,
   searchRange: number,
@@ -8,7 +8,7 @@ type FontHeader = {
   rangeShift: number,
 }
 
-type FontDirectory = {
+export type FontDirectory = {
   [name: string]: {
     checksum: number,
     offset: number,
@@ -16,12 +16,12 @@ type FontDirectory = {
   }
 }
 
-type Point = {
+export type Point = {
   x: number,
   y: number,
 }
 
-type Glyph = {
+export type Glyph = {
   min: Point,
   max: Point,
   coords: Point[],
@@ -29,14 +29,19 @@ type Glyph = {
 }
 
 export default class Font {
-  private header: FontHeader
-  private directory: FontDirectory
-  private glyphs?: Glyph[]
+  readonly header: FontHeader
+  readonly directory: FontDirectory
+  readonly glyphs?: Glyph[]
+  readonly numGlyphs: number
 
   constructor(private buffer: Readonly<ArrayBuffer>) {
     const reader = new Reader(buffer)
     this.header = Font.loadHeader(reader)
     this.directory = Font.loadDirectory(reader, this.header.numTables)
+
+    const numGlyphReader = new Reader(buffer, this.directory['maxp'].offset)
+    numGlyphReader.skipSlice(4) // Skip version info
+    this.numGlyphs = numGlyphReader.getUint16()
   }
 
   private static loadHeader(reader: Reader) {
@@ -103,7 +108,8 @@ export default class Font {
       .map(() => reader.getUint16())
 
     // Skip instruction length and instructions fields
-    reader.skipSlice(reader.getUint16())
+    const instructionsLength = reader.getUint16()
+    reader.skipSlice(instructionsLength)
 
     const flags = Font.readFlags(reader, contourEndIndices[contourEndIndices.length - 1] + 1)
     const xCoords = Font.readCoordinates(reader, flags, 1, 4)
@@ -123,13 +129,15 @@ export default class Font {
     let coord = 0
     for (let i = 0; i < flags.length; i++) {
       const flag = flags[i]
-      //const onCurve = Font.flagBitIsSet(flag, 0)
+      //const onCurve = Font.flagBitIsSet(flag, 0) 
       if (Font.flagBitIsSet(flag, offsetSizeFlagBit)) {
         const offset = reader.getUint8()
         const sign = Font.flagBitIsSet(flag, offsetSignOrSkipBit) ? 1 : -1
-        coord += offset * sign
+        coord += (offset * sign)
       } else if (!Font.flagBitIsSet(flag, offsetSignOrSkipBit)) {
         coord += reader.getInt16()
+      } else {
+        // Skip and jump the index (it's the same as the previous)
       }
       coordinates.push(coord)
     }
@@ -140,14 +148,22 @@ export default class Font {
   private static readFlags(reader: Reader, numPoints: number) {
     const flags = []
     for (let i = 0; i < numPoints; i++) {
-      const flag = reader.getUint8()
-      flags.push(flag)
+      const flag = reader.getInt8()
+      flags[i] = flag
       if (Font.flagBitIsSet(flag, 3)) {
-        for (let j = 0; j < reader.getUint8(); j++) {
-          flags.push(flag)
+        const repeat = reader.getInt8()
+        for (let j = 0; j < repeat; j++) {
+          flags[++i] = flag
         }
       }
     }
+
+    // Verify flags
+    flags.forEach((flag, idx) => {
+      if (Font.flagBitIsSet(flag, 6) || Font.flagBitIsSet(flag, 7)) {
+        console.error('Incorrectly formatted flag no ' + idx)
+      }
+    })
 
     return flags
   }

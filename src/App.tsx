@@ -1,7 +1,7 @@
 import React, { Suspense } from "react"
 import { ErrorBoundary } from "react-error-boundary"
 import ErrorPage from "./Error"
-import Font from "./utils/font"
+import Font, { Glyph } from "./utils/font"
 import { loadFont } from "./utils/db"
 import UploadFont from "./UploadFont"
 
@@ -45,9 +45,67 @@ function promiseToSuspense<T>(promise: Promise<T>): () => T | Error | undefined 
   }
 }
 
+function scale(val: number): number {
+  const POS = 30
+  const SCALE = 0.25
+  return POS + val * SCALE
+}
+
+function drawBoundingBox(ctx: CanvasRenderingContext2D, glyph: Glyph) {
+  ctx.fillStyle = '#444'
+  ctx.fillRect(
+    scale(glyph.min.x),
+    scale(glyph.min.y),
+    scale(glyph.max.x),
+    scale(glyph.max.y),
+  )
+}
+
+function drawPoints(ctx: CanvasRenderingContext2D, glyph: Glyph) {
+  ctx.strokeStyle = 'red'
+  glyph.coords.forEach(point => {
+    ctx.beginPath()
+    ctx.arc(
+      scale(point.x),
+      scale(glyph.max.y - point.y), // X is at the bottom for TTF
+      3,
+      0,
+      2 * Math.PI,
+      false
+    )
+    ctx.stroke()
+  });
+}
+
+function drawContours(ctx: CanvasRenderingContext2D, glyph: Glyph) {
+  let startIdx = 0
+  glyph.contourEndIndices.forEach(endIdx => {
+    ctx.strokeStyle = getNextColor()
+    ctx.beginPath()
+    ctx.moveTo(
+      scale(glyph.coords[startIdx].x),
+      scale(glyph.max.y - glyph.coords[startIdx].y),
+    )
+    for (let i = startIdx + 1; i <= endIdx; i++) {
+      ctx.lineTo(
+        scale(glyph.coords[i].x),
+        scale(glyph.max.y - glyph.coords[i].y),
+      )
+    }
+    ctx.lineTo(
+      scale(glyph.coords[startIdx].x),
+      scale(glyph.max.y - glyph.coords[startIdx].y),
+    )
+    startIdx = endIdx + 1
+    ctx.stroke()
+  })
+}
+
 function Page() {
   const canvas = React.useRef<HTMLCanvasElement>(null)
   const [font, setFont] = React.useState<Font | Error | undefined>()
+  const [shouldDrawPoints, setShouldDrawPoints] = React.useState(true)
+  const [shouldDrawContours, setShouldDrawContours] = React.useState(true)
 
   React.useEffect(() => {
     const promise = loadFont().then(buf => buf && new Font(buf))
@@ -64,71 +122,33 @@ function Page() {
 
       const glyphs = font.getGlyphs()
 
-      const SCALE = 0.5
-      const POS = 30
       ctx.canvas.width = window.innerWidth
       ctx.canvas.height = window.innerWidth
 
       ctx.reset()
-      ctx.strokeStyle = 'red'
-      ctx.fillStyle = '#444'
       glyphs.forEach(glyph => {
         if (!glyph) {
           return
         }
 
-        // Fill bounding box background
-        // ctx.fillRect(
-        //   POS + glyph.min.x * SCALE,
-        //   POS + glyph.min.y * SCALE,
-        //   POS + glyph.max.x * SCALE,
-        //   POS + glyph.max.y * SCALE
-        // )
-
-        // Draw the coords
-        // glyph.coords.forEach(point => {
-        //   ctx.beginPath()
-        //   ctx.arc(
-        //     POS + point.x * SCALE,
-        //     POS + point.y * SCALE,
-        //     3,
-        //     0,
-        //     2 * Math.PI,
-        //     false
-        //   )
-        //   ctx.stroke()
-        // });
-
-        // Draw contours
-        let idx = 0
-        glyph.contourEndIndices.forEach(endIdx => {
-          ctx.strokeStyle = getNextColor()
-          ctx.beginPath()
-          ctx.moveTo(
-            POS + glyph.coords[idx].x * SCALE,
-            POS + glyph.coords[idx].y * SCALE
-          )
-          for (let i = idx + 1; i <= endIdx; i++) {
-            ctx.lineTo(
-              POS + glyph.coords[i].x * SCALE,
-              POS + glyph.coords[i].y * SCALE,
-            )
-          }
-          ctx.lineTo(
-            POS + glyph.coords[idx].x * SCALE,
-            POS + glyph.coords[idx].y * SCALE,
-          )
-          idx = endIdx + 1
-          ctx.stroke()
-
-        })
+        drawBoundingBox(ctx, glyph)
+        if (shouldDrawPoints) {
+          drawPoints(ctx, glyph)
+        }
+        if (shouldDrawContours) {
+          drawContours(ctx, glyph)
+        }
       })
     }
-  }, [font])
+  }, [font, shouldDrawContours, shouldDrawPoints])
 
   return (
     <>
       <UploadFont setFont={setFont} />
+      <div style={{ margin: '10px' }}>
+        <button onClick={() => setShouldDrawPoints(!shouldDrawPoints)}>Draw Points</button>
+        <button onClick={() => setShouldDrawContours(!shouldDrawContours)}>Draw Contours</button>
+      </div>
       <canvas ref={canvas}></canvas>
     </>
   )
