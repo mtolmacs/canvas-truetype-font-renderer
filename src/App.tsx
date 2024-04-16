@@ -1,15 +1,15 @@
 import React, { Suspense } from "react"
 import { ErrorBoundary } from "react-error-boundary"
 import Error from "./Error"
-import Font from "./font"
-import { loadFont } from "./db"
+import Font from "./utils/font"
+import { loadFont } from "./utils/db"
 import UploadFont from "./UploadFont"
 
 function promiseToSuspense<T>(promise: Promise<T>): () => T | Error | undefined {
   let status = 'pending'
   let result: T | Error
 
-  let loading = promise.then(res => {
+  const loading = promise.then(res => {
     status = 'fulfilled'
     result = res
   }).catch(error => {

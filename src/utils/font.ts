@@ -16,9 +16,22 @@ type FontDirectory = {
   }
 }
 
-type SimpleGlyph = {}
+type Point = {
+  x: number,
+  y: number,
+}
 
-type Glyph = SimpleGlyph
+type SimpleGlyph = {
+  endPoints: number[],
+  coordinates: Point[],
+}
+
+type Glyph = {
+  xMin: number,
+  XMax: number,
+  yMin: number,
+  yMax: number,
+} & SimpleGlyph
 
 export default class Font {
   private header: FontHeader
@@ -88,13 +101,13 @@ export default class Font {
       console.error('Compound glyphs are not yet supported')
       return null
     } else {
-      return this.readSimpleGlyph(reader, numContours)
+      return Font.readSimpleGlyph(reader, numContours)
     }
   }
 
   private static readSimpleGlyph(reader: Reader, numContours: number) {
     const endPoints = [...Array(numContours).keys()]
-      .map(_ => reader.getUint16())
+      .map(() => reader.getUint16())
     const numPoints = endPoints.pop()!
 
     const instructionsLength = reader.getUint16()
