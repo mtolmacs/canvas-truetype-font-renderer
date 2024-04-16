@@ -28,5 +28,5 @@ export function loadFont(): Promise<ArrayBuffer | undefined> {
 }
 
 export function storeFont(buf: ArrayBuffer) {
-  return db.fonts.add({ id: 1, name: 'default', data: buf })
+  return db.fonts.delete(1).then(() => db.fonts.add({ id: 1, name: 'default', data: buf }))
 }

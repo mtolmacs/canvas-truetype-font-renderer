@@ -21,17 +21,12 @@ type Point = {
   y: number,
 }
 
-type SimpleGlyph = {
-  endPoints: number[],
-  coordinates: Point[],
-}
-
 type Glyph = {
-  xMin: number,
-  XMax: number,
-  yMin: number,
-  yMax: number,
-} & SimpleGlyph
+  min: Point,
+  max: Point,
+  coords: Point[],
+  contourEndIndices: number[],
+}
 
 export default class Font {
   private header: FontHeader
@@ -80,41 +75,71 @@ export default class Font {
     return ((flag >> bitIdx) & 1) === 1
   }
 
-  getGlyphs() {
+  getGlyphs(): (Glyph | undefined)[] {
     if (this.glyphs) {
       return this.glyphs
     }
 
     const offset = this.directory['glyf'].offset
     const reader = new Reader(this.buffer, offset)
-    Font.readGlyph(reader)
+
+    return [Font.readGlyph(reader)]
   }
 
-  private static readGlyph(reader: Reader) {
+  private static readGlyph(reader: Reader): Glyph | undefined {
     const numContours = reader.getInt16()
+
     const xMin = reader.getInt16()
-    const YMin = reader.getInt16()
+    const yMin = reader.getInt16()
     const xMax = reader.getInt16()
     const yMax = reader.getInt16()
 
     if (numContours < 0) {
       console.error('Compound glyphs are not yet supported')
-      return null
-    } else {
-      return Font.readSimpleGlyph(reader, numContours)
+      return
+    }
+
+    const contourEndIndices = [...Array(numContours).keys()]
+      .map(() => reader.getUint16())
+
+    // Skip instruction length and instructions fields
+    reader.skipSlice(reader.getUint16())
+
+    const flags = Font.readFlags(reader, contourEndIndices[contourEndIndices.length - 1] + 1)
+    const xCoords = Font.readCoordinates(reader, flags, 1, 4)
+    const yCoords = Font.readCoordinates(reader, flags, 2, 5)
+    const coords = xCoords.map((x, idx) => ({ x, y: yCoords[idx] }))
+
+    return {
+      min: { x: xMin, y: yMin },
+      max: { x: xMax, y: yMax },
+      coords,
+      contourEndIndices,
     }
   }
 
-  private static readSimpleGlyph(reader: Reader, numContours: number) {
-    const endPoints = [...Array(numContours).keys()]
-      .map(() => reader.getUint16())
-    const numPoints = endPoints.pop()!
+  private static readCoordinates(reader: Reader, flags: number[], offsetSizeFlagBit: number, offsetSignOrSkipBit: number): number[] {
+    const coordinates: number[] = []
+    let coord = 0
+    for (let i = 0; i < flags.length; i++) {
+      const flag = flags[i]
+      //const onCurve = Font.flagBitIsSet(flag, 0)
+      if (Font.flagBitIsSet(flag, offsetSizeFlagBit)) {
+        const offset = reader.getUint8()
+        const sign = Font.flagBitIsSet(flag, offsetSignOrSkipBit) ? 1 : -1
+        coord += offset * sign
+      } else if (!Font.flagBitIsSet(flag, offsetSignOrSkipBit)) {
+        coord += reader.getInt16()
+      }
+      coordinates.push(coord)
+    }
 
-    const instructionsLength = reader.getUint16()
-    reader.skipSlice(instructionsLength) // Skip instructions
+    return coordinates
+  }
 
+  private static readFlags(reader: Reader, numPoints: number) {
     const flags = []
-    for (let i = 0; i <= numPoints; i++) {
+    for (let i = 0; i < numPoints; i++) {
       const flag = reader.getUint8()
       flags.push(flag)
       if (Font.flagBitIsSet(flag, 3)) {
@@ -123,6 +148,7 @@ export default class Font {
         }
       }
     }
-    console.log(flags)
+
+    return flags
   }
 }
