@@ -8,6 +8,14 @@ export type FontHeader = {
   rangeShift: number,
 }
 
+export type FontDescriptor = {
+  version: string,
+  revision: string,
+  flags: number,
+  unitsPerEm: number,
+  indexToLocFormat: boolean,
+}
+
 export type FontDirectory = {
   [name: string]: {
     checksum: number,
@@ -30,6 +38,7 @@ export type Glyph = {
 
 export default class Font {
   readonly header: FontHeader
+  readonly descriptor: FontDescriptor
   readonly directory: FontDirectory
   readonly glyphs?: Glyph[]
   readonly numGlyphs: number
@@ -42,6 +51,39 @@ export default class Font {
     const numGlyphReader = new Reader(buffer, this.directory['maxp'].offset)
     numGlyphReader.skipSlice(4) // Skip version info
     this.numGlyphs = numGlyphReader.getUint16()
+
+    const headReader = new Reader(this.buffer, this.directory['head'].offset)
+    const majorVersion = headReader.getInt16()
+    const minorVersion = headReader.getInt16()
+    if (majorVersion != 1 || minorVersion != 0) {
+      console.error('TTF version is not 1.0: ' + majorVersion + '.' + minorVersion)
+    }
+    const majorRevision = headReader.getInt16()
+    const minorRevision = headReader.getInt16()
+    headReader.skipSlice(4) // Skip checksum adjustment
+    const magicNumber = headReader.getUint32()
+    if (magicNumber !== 0x5F0F3CF5) {
+      console.error('TTF Magic Number is incorrect: 0x' + magicNumber.toString(16).toUpperCase())
+    }
+    const flags = headReader.getUint16()
+    const unitsPerEm = headReader.getUint16()
+    headReader.skipSlice(8)
+    headReader.skipSlice(8)
+    headReader.skipSlice(2)
+    headReader.skipSlice(2)
+    headReader.skipSlice(2)
+    headReader.skipSlice(2)
+    headReader.skipSlice(2)
+    headReader.skipSlice(2)
+    headReader.skipSlice(2)
+    const indexToLocFormat = headReader.getInt16() === 0
+    this.descriptor = {
+      version: majorVersion + '.' + minorVersion,
+      revision: majorRevision + '.' + minorRevision,
+      flags,
+      unitsPerEm,
+      indexToLocFormat,
+    }
   }
 
   private static loadHeader(reader: Reader) {
