@@ -1,5 +1,7 @@
 import React, { Suspense } from "react"
 import { loadFont, storeFont } from "./db"
+import { ErrorBoundary } from "react-error-boundary"
+import Error from "./Error"
 import UploadFont from "./UploadFont"
 
 function getNumberOfTables(view: DataView) {
@@ -56,8 +58,10 @@ function Page() {
 
 export default function App() {
   return (
-    <Suspense fallback={<>Loading...</>}>
-      <Page />
-    </Suspense >
+    <ErrorBoundary FallbackComponent={Error}>
+      <Suspense fallback={<>Loading...</>}>
+        <Page />
+      </Suspense >
+    </ErrorBoundary>
   )
 }
