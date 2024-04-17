@@ -94,6 +94,7 @@ export default class FontRenderer {
     shouldDrawPoints: boolean,
     shouldDrawContours: boolean,
     shouldDrawBoundingBoxes: boolean,
+    offset: Point,
   ) {
     const lineHeightEm = 0.3
     let posX = 0
@@ -107,17 +108,17 @@ export default class FontRenderer {
       }
 
       if (shouldDrawBoundingBoxes) {
-        this.drawBoundingBox(glyph, { x: posX, y: posY })
+        this.drawBoundingBox(glyph, { x: posX - offset.x, y: posY - offset.y })
       }
       if (shouldDrawPoints) {
-        this.drawPoints(glyph, { x: posX, y: posY })
+        this.drawPoints(glyph, { x: posX - offset.x, y: posY - offset.y })
       }
       if (shouldDrawContours) {
-        this.drawContours(glyph, { x: posX, y: posY })
+        this.drawContours(glyph, { x: posX - offset.x, y: posY - offset.y })
       }
 
       posX += glyph.max.x
-      if (this.scale(posX) > window.innerWidth - 70) {
+      if (this.scale(posX) > window.innerWidth - 60) {
         posX = 0
         posY += (glyph.max.y - glyph.min.y) + lineHeightEm
       }
