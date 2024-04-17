@@ -45,6 +45,20 @@ function promiseToSuspense<T>(promise: Promise<T>): () => T | Error | undefined 
   }
 }
 
+function quadraticBezier(ctx: CanvasRenderingContext2D, start: Point, ctrl: Point, end: Point) {
+  const ctrl1 = {
+    x: start.x + 2 / 3 * (ctrl.x - start.x),
+    y: start.y + 2 / 3 * (ctrl.y - start.y),
+  }
+  const ctrl2 = {
+    x: end.x + 2 / 3 * (ctrl.x - end.x),
+    y: end.y + 2 / 3 * (ctrl.y - end.y),
+  }
+
+  ctx.moveTo(start.x, start.y)
+  ctx.bezierCurveTo(ctrl1.x, ctrl1.y, ctrl2.x, ctrl2.y, end.x, end.y)
+}
+
 function scale(val: number): number {
   const POS = 0
   const SCALE = 128
@@ -66,12 +80,12 @@ function drawBoundingBox(ctx: CanvasRenderingContext2D, glyph: Glyph, base: Poin
 }
 
 function drawPoints(ctx: CanvasRenderingContext2D, glyph: Glyph, base: Point) {
-  ctx.strokeStyle = 'red'
-  glyph.coords.forEach(point => {
+  glyph.coords.forEach((point, idx) => {
     ctx.beginPath()
+    ctx.strokeStyle = glyph.onCurve[idx] ? 'blue' : 'red'
     ctx.arc(
       scale(base.x + point.x),
-      scale(base.y + (glyph.max.y - point.y)), // X is at the bottom for TTF
+      scale(base.y + (glyph.max.y - point.y)), // X is at the bottom for TTF so we need to flip on Y
       3,
       0,
       2 * Math.PI,
@@ -83,23 +97,66 @@ function drawPoints(ctx: CanvasRenderingContext2D, glyph: Glyph, base: Point) {
 
 function drawContours(ctx: CanvasRenderingContext2D, glyph: Glyph, base: Point) {
   let startIdx = 0
-  glyph.contourEndIndices.forEach(endIdx => {
+  glyph.contourEndIndices.forEach((endIdx) => {
     ctx.strokeStyle = getNextColor()
+
     ctx.beginPath()
-    ctx.moveTo(
+    ctx.arc(
       scale(base.x + glyph.coords[startIdx].x),
       scale(base.y + (glyph.max.y - glyph.coords[startIdx].y)),
+      3,
+      0,
+      2 * Math.PI
     )
-    for (let i = startIdx + 1; i <= endIdx; i++) {
-      ctx.lineTo(
-        scale(base.x + glyph.coords[i].x),
-        scale(base.y + (glyph.max.y - glyph.coords[i].y)),
-      )
+    //ctx.stroke()
+
+    ctx.beginPath()
+    ctx.arc(
+      scale(base.x + glyph.coords[endIdx].x),
+      scale(base.y + (glyph.max.y - glyph.coords[endIdx].y)),
+      3,
+      0,
+      2 * Math.PI
+    )
+    //ctx.stroke()
+
+    ctx.beginPath()
+    for (let i = startIdx; i < endIdx - 1; i += 2) {
+      const start = {
+        x: scale(base.x + glyph.coords[i].x),
+        y: scale(base.y + (glyph.max.y - glyph.coords[i].y)),
+      }
+      const ctrl = {
+        x: scale(base.x + glyph.coords[i + 1].x),
+        y: scale(base.y + (glyph.max.y - glyph.coords[i + 1].y)),
+      }
+      const end = {
+        x: scale(base.x + glyph.coords[i + 2].x),
+        y: scale(base.y + (glyph.max.y - glyph.coords[i + 2].y)),
+      }
+      quadraticBezier(ctx, start, ctrl, end)
     }
-    ctx.lineTo(
-      scale(base.x + glyph.coords[startIdx].x),
-      scale(base.y + (glyph.max.y - glyph.coords[startIdx].y)),
-    )
+    // Close the path
+    if (glyph.onCurve[endIdx]) {
+      ctx.lineTo(
+        scale(base.x + glyph.coords[startIdx].x),
+        scale(base.y + (glyph.max.y - glyph.coords[startIdx].y)),
+      )
+    } else {
+      const start = {
+        x: scale(base.x + glyph.coords[endIdx - 1].x),
+        y: scale(base.y + (glyph.max.y - glyph.coords[endIdx - 1].y)),
+      }
+      const ctrl = {
+        x: scale(base.x + glyph.coords[endIdx].x),
+        y: scale(base.y + (glyph.max.y - glyph.coords[endIdx].y)),
+      }
+      const end = {
+        x: scale(base.x + glyph.coords[startIdx].x),
+        y: scale(base.y + (glyph.max.y - glyph.coords[startIdx].y)),
+      }
+      quadraticBezier(ctx, start, ctrl, end)
+    }
     startIdx = endIdx + 1
     ctx.stroke()
   })
@@ -133,8 +190,8 @@ function renderGlyphs(
       drawContours(ctx, glyph, { x: posX, y: posY })
     }
 
-    posX += glyph.max.x // - glyph.min.x
-    if (scale(posX) > window.innerWidth) {
+    posX += glyph.max.x
+    if (scale(posX) > window.innerWidth - 70) {
       posX = 0
       posY += (glyph.max.y - glyph.min.y) + lineHeightEm
     }

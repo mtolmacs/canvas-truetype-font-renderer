@@ -32,6 +32,7 @@ export type Point = {
 export type Glyph = {
   min: Point,
   max: Point,
+  onCurve: boolean[],
   coords: Point[],
   contourEndIndices: number[],
 }
@@ -125,7 +126,7 @@ export default class Font {
     return directory
   }
 
-  private static flagBitIsSet(flag: number, bitIdx: number) {
+  static flagBitIsSet(flag: number, bitIdx: number) {
     return ((flag >> bitIdx) & 1) === 1
   }
 
@@ -149,7 +150,7 @@ export default class Font {
     const yMax = reader.getInt16() / unitsPerEm
 
     if (numContours < 0) {
-      console.error('Compound glyphs are not yet supported')
+      console.warn('Compound glyphs are not yet supported')
       return
     }
 
@@ -165,12 +166,13 @@ export default class Font {
     const yCoords = Font.readCoordinates(reader, flags, 2, 5, unitsPerEm)
     const coords = xCoords.map((x, idx) => ({ x, y: yCoords[idx] }))
 
-    return {
+    return Font.generateImpliedPoints({
       min: { x: xMin, y: yMin },
       max: { x: xMax, y: yMax },
+      onCurve: flags.map(flag => Font.flagBitIsSet(flag, 0)),
       coords,
       contourEndIndices,
-    }
+    })
   }
 
   private static readCoordinates(
@@ -184,7 +186,6 @@ export default class Font {
     let coord = 0
     for (let i = 0; i < flags.length; i++) {
       const flag = flags[i]
-      //const onCurve = Font.flagBitIsSet(flag, 0) 
       if (Font.flagBitIsSet(flag, offsetSizeFlagBit)) {
         const offset = reader.getUint8()
         const sign = Font.flagBitIsSet(flag, offsetSignOrSkipBit) ? 1 : -1
@@ -221,5 +222,43 @@ export default class Font {
     })
 
     return flags
+  }
+
+  private static generateImpliedPoints(glyph: Glyph) {
+    const smoothGlyph: Glyph = {
+      min: glyph.min,
+      max: glyph.max,
+      onCurve: [],
+      coords: [],
+      contourEndIndices: [],
+    }
+
+    let start = 0
+
+    for (const end of glyph.contourEndIndices) {
+      // Walk through each contour
+      let lastOnCurve = glyph.onCurve[start]
+      smoothGlyph.coords.push(glyph.coords[start])
+      smoothGlyph.onCurve.push(glyph.onCurve[start])
+      for (let i = start + 1; i <= end; i++) {
+        const thisOnCurve = glyph.onCurve[i]
+        if (lastOnCurve === thisOnCurve) {
+          // Insert midpoint
+          const midpoint: Point = {
+            x: (glyph.coords[i - 1].x + glyph.coords[i].x) / 2,
+            y: (glyph.coords[i - 1].y + glyph.coords[i].y) / 2,
+          }
+          smoothGlyph.coords.push(midpoint)
+          smoothGlyph.onCurve.push(!lastOnCurve)
+        }
+        smoothGlyph.coords.push(glyph.coords[i])
+        smoothGlyph.onCurve.push(glyph.onCurve[i])
+        lastOnCurve = glyph.onCurve[i]
+      }
+      smoothGlyph.contourEndIndices.push(smoothGlyph.coords.length - 1)
+      start = end + 1
+    }
+
+    return smoothGlyph
   }
 }
