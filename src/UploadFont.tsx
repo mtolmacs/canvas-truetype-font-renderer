@@ -1,5 +1,5 @@
 import { storeFont } from "./utils/db"
-import Font from "./utils/font"
+import Font from "./utils/ttf/font"
 
 export default function UploadFont({
   setFont

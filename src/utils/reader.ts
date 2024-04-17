@@ -1,9 +1,9 @@
 export default class Reader {
-  private view: DataView
+  private offset: number
   private decoder: TextDecoder
 
-  constructor(private buffer: Readonly<ArrayBuffer>, private offset: number = 0) {
-    this.view = new DataView(buffer)
+  constructor(private view: Readonly<DataView>) {
+    this.offset = 0
     this.decoder = new TextDecoder()
   }
 
@@ -44,7 +44,7 @@ export default class Reader {
   }
 
   getSlice(spanSize: number) {
-    const span = this.buffer.slice(this.offset, this.offset + spanSize)
+    const span = this.view.buffer.slice(this.offset, this.offset + spanSize)
     this.offset += spanSize
     return span
   }

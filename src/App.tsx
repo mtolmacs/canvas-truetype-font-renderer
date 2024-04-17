@@ -1,7 +1,7 @@
 import React, { Suspense } from "react"
 import { ErrorBoundary } from "react-error-boundary"
 import ErrorPage from "./Error"
-import Font, { Glyph, Point } from "./utils/font"
+import Font, { Glyph, Point } from "./utils/ttf/font"
 import { loadFont } from "./utils/db"
 import UploadFont from "./UploadFont"
 
